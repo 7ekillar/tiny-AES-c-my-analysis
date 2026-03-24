@@ -30,18 +30,50 @@ NOTE:   String length must be evenly divisible by 16byte (str_len % 16 == 0)
         For AES192/256 the key size is proportionally larger.
 
 */
+/*
+这是 AES 算法的实现，具体支持 ECB、CTR 和 CBC 模式。
+块大小可以在 aes.h 中选择 - 可选值为 AES128、AES192、AES256。
+
+该实现已根据以下文档中的测试向量进行验证：
+  美国国家标准与技术研究院特别出版物 800-38A 2001 版
+
+ECB-AES128
+----------
+
+  明文：
+    6bc1bee22e409f96e93d7e117393172a
+    ae2d8a571e03ac9c9eb76fac45af8e51
+    30c81c46a35ce411e5fbc1191a0a52ef
+    f69f2445df4f9b17ad2b417be66c3710
+
+  密钥：
+    2b7e151628aed2a6abf7158809cf4f3c
+
+  得到的密文：
+    3ad77bb40d7a3660a89ecaf32466ef97 
+    f5d3d58503b9699de785895a96fdbaaf 
+    43b1cd7f598ece23881b00e3ed030688 
+    7b0c785e27e8ad3f8223207104725dd4 
+
+
+注意：字符串长度必须是 16 字节的整数倍（str_len % 16 == 0）
+       如果不是这种情况，你应该在字符串末尾填充零。
+       对于 AES192/256，密钥大小按比例增大。
+
+*/
 
 
 /*****************************************************************************/
-/* Includes:                                                                 */
+/* Includes:     包含头文件：                                                            */
 /*****************************************************************************/
-#include <string.h> // CBC mode, for memset
+#include <string.h> // CBC mode, for memset CBC 模式，用于 memset
 #include "aes.h"
 
 /*****************************************************************************/
-/* Defines:                                                                  */
+/* Defines:       宏定义                                                           */
 /*****************************************************************************/
 // The number of columns comprising a state in AES. This is a constant in AES. Value=4
+// AES 中构成状态（state）的列数。这是 AES 中的常量，值为 4
 #define Nb 4
 
 #if defined(AES256) && (AES256 == 1)
@@ -51,8 +83,8 @@ NOTE:   String length must be evenly divisible by 16byte (str_len % 16 == 0)
     #define Nk 6
     #define Nr 12
 #else
-    #define Nk 4        // The number of 32 bit words in a key.
-    #define Nr 10       // The number of rounds in AES Cipher.
+    #define Nk 4        // The number of 32 bit words in a key. 密钥中 32 位字的数量。
+    #define Nr 10       // The number of rounds in AES Cipher. AES 密码的轮数。
 #endif
 
 // jcallan@github points out that declaring Multiply as a function 
@@ -66,9 +98,10 @@ NOTE:   String length must be evenly divisible by 16byte (str_len % 16 == 0)
 
 
 /*****************************************************************************/
-/* Private variables:                                                        */
+/* Private variables:      私有变量：                                                  */
 /*****************************************************************************/
 // state - array holding the intermediate results during decryption.
+// state - 在解密过程中保存中间结果的数组。
 typedef uint8_t state_t[4][4];
 
 
@@ -76,6 +109,9 @@ typedef uint8_t state_t[4][4];
 // The lookup-tables are marked const so they can be placed in read-only storage instead of RAM
 // The numbers below can be computed dynamically trading ROM for RAM - 
 // This can be useful in (embedded) bootloader applications, where ROM is often limited.
+// 查找表被标记为 const，以便可以放置在只读存储区而不是 RAM 中。
+// 下面的数字可以通过动态计算来用 ROM 换取 RAM -
+// 这在（嵌入式）引导加载程序应用中可能很有用，因为 ROM 通常有限。
 static const uint8_t sbox[256] = {
   //0     1    2      3     4    5     6     7      8    9     A      B    C     D     E     F
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -117,6 +153,7 @@ static const uint8_t rsbox[256] = {
 
 // The round constant word array, Rcon[i], contains the values given by 
 // x to the power (i-1) being powers of x (x is denoted as {02}) in the field GF(2^8)
+// 轮常量字数组 Rcon[i] 包含在域 GF(2^8) 中 x 的 (i-1) 次幂的值（x 表示为 {02}）
 static const uint8_t Rcon[11] = {
   0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
@@ -129,10 +166,18 @@ static const uint8_t Rcon[11] = {
  * "Only the first some of these constants are actually used – up to rcon[10] for AES-128 (as 11 round keys are needed), 
  *  up to rcon[8] for AES-192, up to rcon[7] for AES-256. rcon[0] is not used in AES algorithm."
  */
-
+/*
+ * Jordan Goulder 在 PR #12 (https://github.com/kokke/tiny-AES-C/pull/12) 中指出，
+ * 你可以移除 Rcon 数组中的大部分元素，因为它们未被使用。
+ *
+ * 来自维基百科关于 Rijndael 密钥扩展的文章 @ https://en.wikipedia.org/wiki/Rijndael_key_schedule#Rcon
+ * 
+ * “实际上只使用了这些常量中的前几个 – AES-128 使用到 rcon[10]（因为需要 11 个轮密钥），
+ *  AES-192 使用到 rcon[8]，AES-256 使用到 rcon[7]。rcon[0] 在 AES 算法中未被使用。”
+ */
 
 /*****************************************************************************/
-/* Private functions:                                                        */
+/* Private functions:   私有函数：                                                       */
 /*****************************************************************************/
 /*
 static uint8_t getSBoxValue(uint8_t num)
@@ -143,12 +188,15 @@ static uint8_t getSBoxValue(uint8_t num)
 #define getSBoxValue(num) (sbox[(num)])
 
 // This function produces Nb(Nr+1) round keys. The round keys are used in each round to decrypt the states. 
+// 此函数生成 Nb(Nr+1) 个轮密钥。轮密钥在每个轮中用于对状态进行解密。
 static void KeyExpansion(uint8_t* RoundKey, const uint8_t* Key)
 {
   unsigned i, j, k;
   uint8_t tempa[4]; // Used for the column/row operations
+                    // 用于列/行操作
   
   // The first round key is the key itself.
+  // 第一个轮密钥就是密钥本身。
   for (i = 0; i < Nk; ++i)
   {
     RoundKey[(i * 4) + 0] = Key[(i * 4) + 0];
@@ -158,6 +206,7 @@ static void KeyExpansion(uint8_t* RoundKey, const uint8_t* Key)
   }
 
   // All other round keys are found from the previous round keys.
+   // 所有其他轮密钥由前一轮密钥计算得出。
   for (i = Nk; i < Nb * (Nr + 1); ++i)
   {
     {
@@ -173,6 +222,8 @@ static void KeyExpansion(uint8_t* RoundKey, const uint8_t* Key)
     {
       // This function shifts the 4 bytes in a word to the left once.
       // [a0,a1,a2,a3] becomes [a1,a2,a3,a0]
+      // 此函数将一个字中的 4 个字节向左循环移位一次。
+      // [a0,a1,a2,a3] 变为 [a1,a2,a3,a0]
 
       // Function RotWord()
       {
@@ -185,6 +236,8 @@ static void KeyExpansion(uint8_t* RoundKey, const uint8_t* Key)
 
       // SubWord() is a function that takes a four-byte input word and 
       // applies the S-box to each of the four bytes to produce an output word.
+      // SubWord() 是一个函数，它接收一个四字节输入字，
+      // 并对四个字节中的每一个应用 S 盒，以生成输出字。
 
       // Function Subword()
       {
@@ -234,6 +287,8 @@ void AES_ctx_set_iv(struct AES_ctx* ctx, const uint8_t* iv)
 
 // This function adds the round key to state.
 // The round key is added to the state by an XOR function.
+// 此函数将轮密钥添加到状态。
+// 轮密钥通过异或运算添加到状态。
 static void AddRoundKey(uint8_t round, state_t* state, const uint8_t* RoundKey)
 {
   uint8_t i,j;
@@ -248,6 +303,7 @@ static void AddRoundKey(uint8_t round, state_t* state, const uint8_t* RoundKey)
 
 // The SubBytes Function Substitutes the values in the
 // state matrix with values in an S-box.
+// SubBytes 函数将状态矩阵中的值替换为 S 盒中的值。
 static void SubBytes(state_t* state)
 {
   uint8_t i, j;
@@ -263,18 +319,23 @@ static void SubBytes(state_t* state)
 // The ShiftRows() function shifts the rows in the state to the left.
 // Each row is shifted with different offset.
 // Offset = Row number. So the first row is not shifted.
+// ShiftRows() 函数将状态中的行向左循环移位。
+// 每一行使用不同的偏移量进行移位。
+// 偏移量 = 行号。因此第一行不移位。
 static void ShiftRows(state_t* state)
 {
   uint8_t temp;
 
   // Rotate first row 1 columns to left  
+  // 将第一行向左循环移动 1 列
   temp           = (*state)[0][1];
   (*state)[0][1] = (*state)[1][1];
   (*state)[1][1] = (*state)[2][1];
   (*state)[2][1] = (*state)[3][1];
   (*state)[3][1] = temp;
 
-  // Rotate second row 2 columns to left  
+  // Rotate second row 2 columns to left
+  // 将第二行向左循环移动 2 列 
   temp           = (*state)[0][2];
   (*state)[0][2] = (*state)[2][2];
   (*state)[2][2] = temp;
@@ -284,6 +345,7 @@ static void ShiftRows(state_t* state)
   (*state)[3][2] = temp;
 
   // Rotate third row 3 columns to left
+  // 将第三行向左循环移动 3 列
   temp           = (*state)[0][3];
   (*state)[0][3] = (*state)[3][3];
   (*state)[3][3] = (*state)[2][3];
@@ -297,6 +359,7 @@ static uint8_t xtime(uint8_t x)
 }
 
 // MixColumns function mixes the columns of the state matrix
+// MixColumns 函数混淆状态矩阵的列
 static void MixColumns(state_t* state)
 {
   uint8_t i;
@@ -316,6 +379,10 @@ static void MixColumns(state_t* state)
 // Note: The last call to xtime() is unneeded, but often ends up generating a smaller binary
 //       The compiler seems to be able to vectorize the operation better this way.
 //       See https://github.com/kokke/tiny-AES-c/pull/34
+// Multiply 用于在域 GF(2^8) 中相乘
+// 注意：最后一次对 xtime() 的调用是不需要的，但通常会导致生成更小的二进制文件
+//       编译器似乎能够以这种方式更好地向量化操作。
+//       参见 https://github.com/kokke/tiny-AES-c/pull/34
 #if MULTIPLY_AS_A_FUNCTION
 static uint8_t Multiply(uint8_t x, uint8_t y)
 {
@@ -324,6 +391,7 @@ static uint8_t Multiply(uint8_t x, uint8_t y)
        ((y>>2 & 1) * xtime(xtime(x))) ^
        ((y>>3 & 1) * xtime(xtime(xtime(x)))) ^
        ((y>>4 & 1) * xtime(xtime(xtime(xtime(x)))))); /* this last call to xtime() can be omitted */
+                                                       /* 最后一次对 xtime() 的调用可以省略 */
   }
 #else
 #define Multiply(x, y)                                \
@@ -347,6 +415,9 @@ static uint8_t getSBoxInvert(uint8_t num)
 // MixColumns function mixes the columns of the state matrix.
 // The method used to multiply may be difficult to understand for the inexperienced.
 // Please use the references to gain more information.
+// MixColumns 函数混淆状态矩阵的列。
+// 所使用的乘法方法对于初学者可能难以理解。
+// 请使用参考资料获取更多信息。
 static void InvMixColumns(state_t* state)
 {
   int i;
@@ -368,6 +439,7 @@ static void InvMixColumns(state_t* state)
 
 // The SubBytes Function Substitutes the values in the
 // state matrix with values in an S-box.
+// SubBytes 函数将状态矩阵中的值替换为 S 盒中的值。
 static void InvSubBytes(state_t* state)
 {
   uint8_t i, j;
@@ -384,14 +456,16 @@ static void InvShiftRows(state_t* state)
 {
   uint8_t temp;
 
-  // Rotate first row 1 columns to right  
+  // Rotate first row 1 columns to right 
+  // 将第一行向右循环移动 1 列 
   temp = (*state)[3][1];
   (*state)[3][1] = (*state)[2][1];
   (*state)[2][1] = (*state)[1][1];
   (*state)[1][1] = (*state)[0][1];
   (*state)[0][1] = temp;
 
-  // Rotate second row 2 columns to right 
+  // Rotate second row 2 columns to right
+  // 将第二行向右循环移动 2 列 
   temp = (*state)[0][2];
   (*state)[0][2] = (*state)[2][2];
   (*state)[2][2] = temp;
@@ -401,6 +475,7 @@ static void InvShiftRows(state_t* state)
   (*state)[3][2] = temp;
 
   // Rotate third row 3 columns to right
+  // 将第三行向右循环移动 3 列
   temp = (*state)[0][3];
   (*state)[0][3] = (*state)[1][3];
   (*state)[1][3] = (*state)[2][3];
@@ -410,17 +485,23 @@ static void InvShiftRows(state_t* state)
 #endif // #if (defined(CBC) && CBC == 1) || (defined(ECB) && ECB == 1)
 
 // Cipher is the main function that encrypts the PlainText.
+// Cipher 是加密明文的主函数。
 static void Cipher(state_t* state, const uint8_t* RoundKey)
 {
   uint8_t round = 0;
 
   // Add the First round key to the state before starting the rounds.
+  // 在开始轮操作之前，将第一轮密钥添加到状态。
   AddRoundKey(0, state, RoundKey);
 
   // There will be Nr rounds.
   // The first Nr-1 rounds are identical.
   // These Nr rounds are executed in the loop below.
   // Last one without MixColumns()
+  // 共有 Nr 轮。
+  // 前 Nr-1 轮是相同的。
+  // 这些 Nr 轮在下面的循环中执行。
+  // 最后一轮不执行 MixColumns()
   for (round = 1; ; ++round)
   {
     SubBytes(state);
@@ -432,6 +513,7 @@ static void Cipher(state_t* state, const uint8_t* RoundKey)
     AddRoundKey(round, state, RoundKey);
   }
   // Add round key to last round
+  // 为最后一轮添加轮密钥
   AddRoundKey(Nr, state, RoundKey);
 }
 
@@ -441,12 +523,17 @@ static void InvCipher(state_t* state, const uint8_t* RoundKey)
   uint8_t round = 0;
 
   // Add the First round key to the state before starting the rounds.
+  // 在开始轮操作之前，将最后一轮密钥添加到状态。
   AddRoundKey(Nr, state, RoundKey);
 
   // There will be Nr rounds.
   // The first Nr-1 rounds are identical.
   // These Nr rounds are executed in the loop below.
   // Last one without InvMixColumn()
+  // 共有 Nr 轮。
+  // 前 Nr-1 轮是相同的。
+  // 这些 Nr 轮在下面的循环中执行。
+  // 最后一轮不执行 InvMixColumn()
   for (round = (Nr - 1); ; --round)
   {
     InvShiftRows(state);
@@ -462,7 +549,7 @@ static void InvCipher(state_t* state, const uint8_t* RoundKey)
 #endif // #if (defined(CBC) && CBC == 1) || (defined(ECB) && ECB == 1)
 
 /*****************************************************************************/
-/* Public functions:                                                         */
+/* Public functions:    公共函数：                                                     */
 /*****************************************************************************/
 #if defined(ECB) && (ECB == 1)
 
@@ -470,12 +557,14 @@ static void InvCipher(state_t* state, const uint8_t* RoundKey)
 void AES_ECB_encrypt(const struct AES_ctx* ctx, uint8_t* buf)
 {
   // The next function call encrypts the PlainText with the Key using AES algorithm.
+  // 下面的函数调用使用 AES 算法用密钥加密明文。
   Cipher((state_t*)buf, ctx->RoundKey);
 }
 
 void AES_ECB_decrypt(const struct AES_ctx* ctx, uint8_t* buf)
 {
   // The next function call decrypts the PlainText with the Key using AES algorithm.
+  // 下面的函数调用使用 AES 算法用密钥解密密文。
   InvCipher((state_t*)buf, ctx->RoundKey);
 }
 
@@ -492,7 +581,7 @@ void AES_ECB_decrypt(const struct AES_ctx* ctx, uint8_t* buf)
 static void XorWithIv(uint8_t* buf, const uint8_t* Iv)
 {
   uint8_t i;
-  for (i = 0; i < AES_BLOCKLEN; ++i) // The block in AES is always 128bit no matter the key size
+  for (i = 0; i < AES_BLOCKLEN; ++i) // The block in AES is always 128bit no matter the key size // AES 中的块始终为 128 位，无论密钥大小如何                                    
   {
     buf[i] ^= Iv[i];
   }
@@ -509,7 +598,7 @@ void AES_CBC_encrypt_buffer(struct AES_ctx *ctx, uint8_t* buf, size_t length)
     Iv = buf;
     buf += AES_BLOCKLEN;
   }
-  /* store Iv in ctx for next call */
+  /* store Iv in ctx for next call */ /* 将 Iv 存储在 ctx 中，供下次调用使用 */
   memcpy(ctx->Iv, Iv, AES_BLOCKLEN);
 }
 
@@ -535,6 +624,7 @@ void AES_CBC_decrypt_buffer(struct AES_ctx* ctx, uint8_t* buf, size_t length)
 #if defined(CTR) && (CTR == 1)
 
 /* Symmetrical operation: same function for encrypting as for decrypting. Note any IV/nonce should never be reused with the same key */
+/* 对称操作：加密和解密使用相同的函数。注意任何 IV/nonce 绝不能与相同的密钥重复使用 */
 void AES_CTR_xcrypt_buffer(struct AES_ctx* ctx, uint8_t* buf, size_t length)
 {
   uint8_t buffer[AES_BLOCKLEN];
@@ -543,16 +633,17 @@ void AES_CTR_xcrypt_buffer(struct AES_ctx* ctx, uint8_t* buf, size_t length)
   int bi;
   for (i = 0, bi = AES_BLOCKLEN; i < length; ++i, ++bi)
   {
-    if (bi == AES_BLOCKLEN) /* we need to regen xor compliment in buffer */
+    if (bi == AES_BLOCKLEN) /* we need to regen xor compliment in buffer *//* 我们需要在缓冲区中重新生成异或补数 */
     {
       
       memcpy(buffer, ctx->Iv, AES_BLOCKLEN);
       Cipher((state_t*)buffer,ctx->RoundKey);
 
       /* Increment Iv and handle overflow */
+      /* 递增 Iv 并处理溢出 */
       for (bi = (AES_BLOCKLEN - 1); bi >= 0; --bi)
       {
-	/* inc will overflow */
+	/* inc will overflow *//* 递增将导致溢出 */
         if (ctx->Iv[bi] == 255)
 	{
           ctx->Iv[bi] = 0;
