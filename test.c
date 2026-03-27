@@ -66,7 +66,7 @@ static void phex(uint8_t* str)
     printf("\n");
 }
 
-static void test_encrypt_ecb_verbose(void)
+/* static void test_encrypt_ecb_verbose(void)
 {
     // Example of more verbose verification
     // 更详细的验证示例
@@ -108,9 +108,77 @@ static void test_encrypt_ecb_verbose(void)
       phex(plain_text + (i * 16));
     }
     printf("\n");
+} */
+/////////////////////////////////////////////////////////////////////////
+static void test_encrypt_ecb_verbose(void)
+{
+    // Example of more verbose verification
+    // 更详细的验证示例
+
+    uint8_t i;
+
+    // 128bit key 128位密钥
+    uint8_t key[16] =        { (uint8_t) 0x2b, (uint8_t) 0x7e, (uint8_t) 0x15, (uint8_t) 0x16, (uint8_t) 0x28, (uint8_t) 0xae, (uint8_t) 0xd2, (uint8_t) 0xa6, (uint8_t) 0xab, (uint8_t) 0xf7, (uint8_t) 0x15, (uint8_t) 0x88, (uint8_t) 0x09, (uint8_t) 0xcf, (uint8_t) 0x4f, (uint8_t) 0x3c };
+    // 512bit text 512位文本
+    
+    const char * chinese_str = "很详细啊。还包括了几种工作模式。 输入的明文为啥不选择一段中文文字呢？如果你把我写的这些评语输入进去，会如何呢？";        
+    size_t input_len = strlen(chinese_str);//166Byte    
+
+    uint8_t plain_text[176];//176 = 16 * 11
+    size_t data_len = input_len;
+    memcpy(plain_text,chinese_str,data_len);
+
+// print text to encrypt, key and IV
+    // 打印待加密文本、密钥和 IV
+    printf("ECB encrypt verbose:\n\n");
+    printf("plain text: %s\n",(char *)plain_text);
+    
+    printf("\n");
+
+    printf("key:\n");
+    phex(key);
+    printf("\n");
+
+    //填充够16的倍数
+    size_t pad_len = AES_BLOCKLEN - (data_len % AES_BLOCKLEN);
+    for(i =0; i < pad_len; ++i ) {
+        plain_text[data_len + i] = (uint8_t)pad_len;
+    }
+    size_t padded_len = data_len + pad_len;//176Byte
+
+    // print the resulting cipher as 11 x 16 byte strings
+    // 将生成的密文以 11 个 16 字节字符串的形式打印
+    printf("ciphertext:\n");
+    
+    struct AES_ctx ctx;
+    AES_init_ctx(&ctx, key);
+
+    for (i = 0; i < 11; ++i)
+    {
+      AES_ECB_encrypt(&ctx, plain_text + (i * 16));
+      phex(plain_text + (i * 16));
+    }
+    printf("\n");
+
+    //输出解密后的内容
+    AES_init_ctx(&ctx, key);
+
+    for (i = 0; i < padded_len; i += AES_BLOCKLEN)
+    {
+      AES_ECB_decrypt(&ctx, plain_text + i);
+    }
+
+    size_t padding_len = plain_text[padded_len - 1];
+    if (padding_len <= AES_BLOCKLEN && padding_len <= padded_len) {
+        padded_len -= padding_len;
+    }
+    plain_text[padded_len] = '\0';
+    printf("Decrypted: %s\n", (char*)plain_text);
+
+    printf("\n");
+
 }
-
-
+//////////////////////////////////////////////////////////////////////
 static int test_encrypt_ecb(void)
 {
 #if defined(AES256)

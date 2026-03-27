@@ -24,3 +24,34 @@ f5d3d58503b9699de785895a96fdbaaf
 43b1cd7f598ece23881b00e3ed030688
 7b0c785e27e8ad3f8223207104725dd4
 
+
+Testing AES128
+
+CBC encrypt: SUCCESS!
+CBC decrypt: SUCCESS!
+CTR encrypt: SUCCESS!
+CTR decrypt: SUCCESS!
+ECB decrypt: SUCCESS!
+ECB encrypt: SUCCESS!
+ECB encrypt verbose:
+
+plain text: 很详细啊。还包括了几种工作模式。 输入的明文为啥不选择一段中文文字呢？如果你把我写的这些评语输入进去，会如何呢？
+
+key:
+2b7e151628aed2a6abf7158809cf4f3c
+
+ciphertext:
+604b036f9d3202c9643b19512c1730ea
+cb77e500c36690559d185947bb21e551
+daedc9257c39b4a3d07839499830aa6e
+d3439312c1828b35a402f65cd002baee
+153c856a20cf8b07f635cb073bf944de
+d830660dee26ea3fb76838fe4c6c84cf
+140cb4cb80df0c76dde54031f1b4fd23
+f3aef37c298d8a7c95d900e7949cdc2a
+f5e027a8ffa429590c562b86bc2e091b
+d63afe679eedabd094e1406446c0a197
+79ad9a1d323821c1133219d151111c4d
+
+Decrypted: 很详细啊。还包括了几种工作模式。 输入的明文为啥不选择一段中文文字呢？如果你把我写的这些评语输入进去，会如何呢？
+
